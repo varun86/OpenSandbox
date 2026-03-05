@@ -432,9 +432,11 @@ async def proxy_sandbox_endpoint_request(request: Request, sandbox_id: str, port
 
     target_host = endpoint.endpoint
     query_string = request.url.query
-    target_url = f"http://{target_host}/{full_path}"
-    if query_string:
-        target_url = f"{target_url}?{query_string}"
+    target_url = (
+        f"http://{target_host}/{full_path}?{query_string}"
+        if query_string
+        else f"http://{target_host}/{full_path}"
+    )
 
     client: httpx.AsyncClient = request.app.state.http_client
 

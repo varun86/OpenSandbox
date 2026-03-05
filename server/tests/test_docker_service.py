@@ -988,7 +988,7 @@ class TestDockerVolumeValidation:
         assert binds[0] == "/var/lib/docker/volumes/my-vol/_data/datasets/train:/mnt/train:ro"
 
     def test_host_path_not_found_rejected(self, mock_docker):
-        """Host path that does not exist should be rejected."""
+        """Host path create failure should return 500 with HOST_PATH_CREATE_FAILED."""
         mock_client = MagicMock()
         mock_client.containers.list.return_value = []
         mock_docker.from_env.return_value = mock_client
@@ -1012,11 +1012,12 @@ class TestDockerVolumeValidation:
             ],
         )
 
-        with pytest.raises(HTTPException) as exc_info:
-            service.create_sandbox(request)
+        with patch("src.services.docker.os.makedirs", side_effect=PermissionError("denied")):
+            with pytest.raises(HTTPException) as exc_info:
+                service.create_sandbox(request)
 
-        assert exc_info.value.status_code == status.HTTP_400_BAD_REQUEST
-        assert exc_info.value.detail["code"] == SandboxErrorCodes.HOST_PATH_NOT_FOUND
+        assert exc_info.value.status_code == status.HTTP_500_INTERNAL_SERVER_ERROR
+        assert exc_info.value.detail["code"] == SandboxErrorCodes.HOST_PATH_CREATE_FAILED
 
     def test_host_path_not_in_allowlist_rejected(self, mock_docker):
         """Host path not in allowlist should be rejected."""
@@ -1167,10 +1168,13 @@ class TestDockerVolumeValidation:
             assert len(binds) == 1
             assert binds[0] == f"{sub_dir}:/mnt/work:ro"
 
-    def test_host_subpath_not_found_rejected(self, mock_docker):
-        """Host volume with non-existent subPath should be rejected."""
+    def test_host_subpath_auto_created(self, mock_docker):
+        """Host volume with non-existent subPath should be auto-created."""
         mock_client = MagicMock()
         mock_client.containers.list.return_value = []
+        mock_client.api.create_host_config.return_value = {}
+        mock_client.api.create_container.return_value = {"Id": "cid"}
+        mock_client.containers.get.return_value = MagicMock()
         mock_docker.from_env.return_value = mock_client
 
         service = DockerSandboxService(config=_app_config())
@@ -1178,6 +1182,7 @@ class TestDockerVolumeValidation:
         import tempfile
 
         with tempfile.TemporaryDirectory() as tmpdir:
+            sub = "auto-created-sub"
             request = CreateSandboxRequest(
                 image=ImageSpec(uri="python:3.11"),
                 timeout=120,
@@ -1191,16 +1196,31 @@ class TestDockerVolumeValidation:
                         host=Host(path=tmpdir),
                         mount_path="/mnt/work",
                         read_only=False,
-                        sub_path="nonexistent-sub",
+                        sub_path=sub,
                     )
                 ],
             )
 
-            with pytest.raises(HTTPException) as exc_info:
-                service.create_sandbox(request)
+            import os
 
-            assert exc_info.value.status_code == status.HTTP_400_BAD_REQUEST
-            assert exc_info.value.detail["code"] == SandboxErrorCodes.HOST_PATH_NOT_FOUND
+            resolved = os.path.join(tmpdir, sub)
+            assert not os.path.exists(resolved)
+
+            # create_sandbox will proceed past volume validation (subpath
+            # auto-created) but will fail later during container provisioning
+            # (mock doesn't cover the full flow).  We only care that the
+            # directory was created — NOT that it raised HOST_PATH_CREATE_FAILED.
+            try:
+                service.create_sandbox(request)
+            except HTTPException as e:
+                # If it's our own create-failed error, the auto-create didn't
+                # work — let the test fail explicitly.
+                if e.detail.get("code") == SandboxErrorCodes.HOST_PATH_CREATE_FAILED:
+                    raise
+            except Exception:
+                pass  # other provisioning errors are expected
+
+            assert os.path.isdir(resolved)
 
     def test_empty_allowlist_permits_any_host_path(self, mock_docker):
         """Empty allowed_host_paths (default) should permit any valid host path."""
