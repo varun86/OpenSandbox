@@ -103,6 +103,10 @@ func (c *Controller) executeSelectSQLQuery(ctx context.Context, request *Execute
 		}
 		result = append(result, row)
 	}
+	if err := rows.Err(); err != nil {
+		request.Hooks.OnExecuteError(&execute.ErrorOutput{EName: "RowIterationError", EValue: err.Error()})
+		return nil
+	}
 
 	queryResult := QueryResult{
 		Columns: columns,
@@ -155,8 +159,11 @@ func (c *Controller) executeUpdateSQLQuery(ctx context.Context, request *Execute
 
 // getQueryType extracts the first token to decide which executor to use.
 func (c *Controller) getQueryType(query string) string {
-	firstWord := strings.ToUpper(strings.Fields(query)[0])
-	return firstWord
+	fields := strings.Fields(query)
+	if len(fields) == 0 {
+		return ""
+	}
+	return strings.ToUpper(fields[0])
 }
 
 // initDB lazily opens the local sandbox database.
