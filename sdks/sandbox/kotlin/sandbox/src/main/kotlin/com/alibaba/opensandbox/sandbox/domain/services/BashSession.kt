@@ -24,6 +24,10 @@ import com.alibaba.opensandbox.sandbox.domain.models.execd.executions.RunInSessi
  *
  * Provides create_session, run_in_session, and delete_session to manage
  * stateful bash sessions with persistent shell state across multiple runs.
+ *
+ * This interface is internal. It is not the recommended runtime entry point.
+ * Use [Commands.createSession], [Commands.runInSession], and [Commands.deleteSession]
+ * via `sandbox.commands()` instead.
  */
 internal interface BashSession {
     /**

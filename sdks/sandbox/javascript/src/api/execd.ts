@@ -17,6 +17,13 @@
  * Do not make direct changes to the file.
  */
 
+/**
+ * NOTE: The session-related path types and operations in this file (e.g. /session, runInSession)
+ * are generated from the execd OpenAPI spec. They are not the recommended runtime entry point.
+ * Use `sandbox.commands.createSession()`, `sandbox.commands.runInSession()`, and
+ * `sandbox.commands.deleteSession()` instead.
+ */
+
 export interface paths {
     "/ping": {
         parameters: {

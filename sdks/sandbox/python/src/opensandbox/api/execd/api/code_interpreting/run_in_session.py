@@ -13,6 +13,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 #
+# NOTE: This module is generated from the execd OpenAPI spec. It is not the
+# recommended runtime entry point. Use sandbox.commands.run_in_session(...)
+# instead, which handles SSE streaming and execution result shaping.
 
 from http import HTTPStatus
 from typing import Any
