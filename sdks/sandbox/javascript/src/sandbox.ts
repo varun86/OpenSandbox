@@ -246,7 +246,7 @@ export class Sandbox {
     // Validate volumes: exactly one backend must be specified per volume
     if (opts.volumes) {
       for (const vol of opts.volumes) {
-        const backendsSpecified = [vol.host, vol.pvc, vol.ossfs].filter((b) => b !== undefined).length;
+        const backendsSpecified = [vol.host, vol.pvc, vol.ossfs].filter((b) => b != null).length;
         if (backendsSpecified === 0) {
           throw new Error(
             `Volume '${vol.name}' must specify exactly one backend (host, pvc, ossfs), but none was provided.`

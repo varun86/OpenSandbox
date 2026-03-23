@@ -216,3 +216,26 @@ test("Sandbox.create rejects volume with multiple backends", async () => {
     /must specify exactly one backend \(host, pvc, ossfs\)/
   );
 });
+
+test("Sandbox.create treats null backends as absent", async () => {
+  const { adapterFactory, recordedRequests } = createAdapterFactory();
+
+  await Sandbox.create({
+    adapterFactory,
+    connectionConfig: { domain: "http://127.0.0.1:8080" },
+    image: "python:3.12",
+    skipHealthCheck: true,
+    volumes: [
+      {
+        name: "host-with-null-ossfs",
+        host: { path: "/tmp" },
+        ossfs: null,
+        pvc: undefined,
+        mountPath: "/mnt",
+      },
+    ],
+  });
+
+  assert.equal(recordedRequests.length, 1);
+  assert.equal(recordedRequests[0].volumes[0].host.path, "/tmp");
+});
