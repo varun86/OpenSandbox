@@ -31,7 +31,7 @@ import re
 from opensandbox_server.services.constants import RESERVED_LABEL_PREFIX, SandboxErrorCodes
 
 if TYPE_CHECKING:
-    from opensandbox_server.api.schema import NetworkPolicy, OSSFS, Volume
+    from opensandbox_server.api.schema import NetworkPolicy, OSSFS, PlatformSpec, Volume
     from opensandbox_server.config import EgressConfig
 
 
@@ -229,6 +229,49 @@ def calculate_expiration_or_raise(created_at: datetime, timeout_seconds: int) ->
                 ),
             },
         ) from exc
+
+
+def ensure_platform_valid(platform: Optional["PlatformSpec"]) -> None:
+    """
+    Validate platform os/arch values for v1 platform contract.
+
+    Supported values in this iteration:
+    - os: linux, windows
+    - arch: amd64, arm64
+    """
+    if platform is None:
+        return
+
+    supported_os = {"linux", "windows"}
+    supported_arch = {"amd64", "arm64"}
+    normalized_os = platform.os.strip().lower()
+    normalized_arch = platform.arch.strip().lower()
+
+    if normalized_os not in supported_os:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={
+                "code": SandboxErrorCodes.INVALID_PARAMETER,
+                "message": (
+                    f"Unsupported platform.os '{platform.os}'. "
+                    f"Supported values: {sorted(supported_os)}."
+                ),
+            },
+        )
+    if normalized_arch not in supported_arch:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={
+                "code": SandboxErrorCodes.INVALID_PARAMETER,
+                "message": (
+                    f"Unsupported platform.arch '{platform.arch}'. "
+                    f"Supported values: {sorted(supported_arch)}."
+                ),
+            },
+        )
+
+    platform.os = normalized_os
+    platform.arch = normalized_arch
 
 
 # Volume name must be a valid DNS label
@@ -640,6 +683,7 @@ __all__ = [
     "ensure_entrypoint",
     "ensure_future_expiration",
     "ensure_valid_port",
+    "ensure_platform_valid",
     "ensure_metadata_labels",
     "ensure_egress_configured",
     "ensure_valid_volume_name",

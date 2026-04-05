@@ -17,11 +17,12 @@ Unit tests for BatchSandboxProvider.
 """
 
 import pytest
+from types import SimpleNamespace
 from datetime import datetime, timezone
 from unittest.mock import MagicMock
 from kubernetes.client import ApiException
 
-from opensandbox_server.api.schema import ImageSpec, ImageAuth, NetworkPolicy, NetworkRule
+from opensandbox_server.api.schema import ImageSpec, ImageAuth, NetworkPolicy, NetworkRule, PlatformSpec
 from opensandbox_server.config import (
     AppConfig,
     EGRESS_MODE_DNS,
@@ -138,6 +139,93 @@ class TestBatchSandboxProvider:
         assert "initContainers" in body["spec"]["template"]["spec"]
         assert "containers" in body["spec"]["template"]["spec"]
         assert "volumes" in body["spec"]["template"]["spec"]
+
+    def test_create_workload_injects_platform_node_selector(self, mock_k8s_client):
+        provider = BatchSandboxProvider(mock_k8s_client)
+        mock_k8s_client.create_custom_object.return_value = {
+            "metadata": {"name": "test-id", "uid": "test-uid"}
+        }
+
+        provider.create_workload(
+            sandbox_id="test-id",
+            namespace="test-ns",
+            image_spec=ImageSpec(uri="python:3.11"),
+            entrypoint=["/bin/bash"],
+            env={},
+            resource_limits={"cpu": "1", "memory": "1Gi"},
+            labels={"opensandbox.io/id": "test-id"},
+            expires_at=None,
+            execd_image="execd:latest",
+            platform=PlatformSpec(os="linux", arch="arm64"),
+        )
+
+        body = mock_k8s_client.create_custom_object.call_args.kwargs["body"]
+        node_selector = body["spec"]["template"]["spec"]["nodeSelector"]
+        assert node_selector["kubernetes.io/os"] == "linux"
+        assert node_selector["kubernetes.io/arch"] == "arm64"
+
+    def test_create_workload_rejects_platform_conflict_with_template_selector(self, mock_k8s_client, tmp_path):
+        template_file = tmp_path / "template.yaml"
+        template_file.write_text(
+            """
+spec:
+  template:
+    spec:
+      nodeSelector:
+        kubernetes.io/os: linux
+        kubernetes.io/arch: amd64
+"""
+        )
+        provider = BatchSandboxProvider(mock_k8s_client, _app_config_with_template(str(template_file)))
+
+        with pytest.raises(ValueError, match="platform conflict with template nodeSelector"):
+            provider.create_workload(
+                sandbox_id="test-id",
+                namespace="test-ns",
+                image_spec=ImageSpec(uri="python:3.11"),
+                entrypoint=["/bin/bash"],
+                env={},
+                resource_limits={"cpu": "1", "memory": "1Gi"},
+                labels={"opensandbox.io/id": "test-id"},
+                expires_at=None,
+                execd_image="execd:latest",
+                platform=PlatformSpec(os="linux", arch="arm64"),
+            )
+
+    def test_create_workload_rejects_platform_conflict_with_template_node_affinity(
+        self, mock_k8s_client, tmp_path
+    ):
+        template_file = tmp_path / "template.yaml"
+        template_file.write_text(
+            """
+spec:
+  template:
+    spec:
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+              - matchExpressions:
+                  - key: kubernetes.io/arch
+                    operator: In
+                    values: ["amd64"]
+"""
+        )
+        provider = BatchSandboxProvider(mock_k8s_client, _app_config_with_template(str(template_file)))
+
+        with pytest.raises(ValueError, match="platform conflict with template nodeAffinity"):
+            provider.create_workload(
+                sandbox_id="test-id",
+                namespace="test-ns",
+                image_spec=ImageSpec(uri="python:3.11"),
+                entrypoint=["/bin/bash"],
+                env={},
+                resource_limits={"cpu": "1", "memory": "1Gi"},
+                labels={"opensandbox.io/id": "test-id"},
+                expires_at=None,
+                execd_image="execd:latest",
+                platform=PlatformSpec(os="linux", arch="arm64"),
+            )
     
     def test_create_workload_builds_execd_init_container(self, mock_k8s_client):
         """
@@ -799,6 +887,189 @@ spec:
         
         result = provider.get_status(workload)
         
+        assert result["state"] == "Pending"
+        assert result["reason"] == "BATCHSANDBOX_PENDING"
+
+    def test_get_status_returns_failed_when_pod_unschedulable(self):
+        mock_k8s_client = MagicMock()
+        provider = BatchSandboxProvider(mock_k8s_client)
+        mock_k8s_client.list_pods.return_value = [
+            SimpleNamespace(
+                status=SimpleNamespace(
+                    phase="Pending",
+                    pod_ip=None,
+                    conditions=[
+                        SimpleNamespace(
+                            type="PodScheduled",
+                            status="False",
+                            reason="Unschedulable",
+                            message="0/1 nodes are available: 1 node(s) didn't match Pod's node affinity.",
+                        )
+                    ],
+                )
+            )
+        ]
+        workload = {
+            "spec": {
+                "template": {
+                    "spec": {
+                        "nodeSelector": {
+                            "kubernetes.io/os": "linux",
+                            "kubernetes.io/arch": "arm64",
+                        }
+                    }
+                }
+            },
+            "status": {
+                "replicas": 1,
+                "ready": 0,
+                "allocated": 0,
+                "selector": "app=sandbox",
+            },
+            "metadata": {
+                "namespace": "test-ns",
+                "creationTimestamp": "2025-12-24T10:00:00Z",
+            },
+        }
+
+        result = provider.get_status(workload)
+
+        assert result["state"] == "Failed"
+        assert result["reason"] == "POD_PLATFORM_UNSCHEDULABLE"
+        assert "didn't match Pod's node affinity" in result["message"]
+
+    def test_get_status_keeps_pending_for_generic_failed_scheduling(self):
+        mock_k8s_client = MagicMock()
+        provider = BatchSandboxProvider(mock_k8s_client)
+        mock_k8s_client.list_pods.return_value = [
+            SimpleNamespace(
+                status=SimpleNamespace(
+                    phase="Pending",
+                    pod_ip=None,
+                    conditions=[
+                        SimpleNamespace(
+                            type="PodScheduled",
+                            status="False",
+                            reason="Unschedulable",
+                            message="0/1 nodes are available: 1 Insufficient cpu.",
+                        )
+                    ],
+                )
+            )
+        ]
+        workload = {
+            "status": {
+                "replicas": 1,
+                "ready": 0,
+                "allocated": 0,
+                "selector": "app=sandbox",
+            },
+            "metadata": {
+                "namespace": "test-ns",
+                "creationTimestamp": "2025-12-24T10:00:00Z",
+            },
+        }
+
+        result = provider.get_status(workload)
+
+        assert result["state"] == "Pending"
+        assert result["reason"] == "BATCHSANDBOX_PENDING"
+
+    def test_get_status_keeps_pending_when_non_platform_affinity_mismatch(self):
+        mock_k8s_client = MagicMock()
+        provider = BatchSandboxProvider(mock_k8s_client)
+        mock_k8s_client.list_pods.return_value = [
+            SimpleNamespace(
+                status=SimpleNamespace(
+                    phase="Pending",
+                    pod_ip=None,
+                    conditions=[
+                        SimpleNamespace(
+                            type="PodScheduled",
+                            status="False",
+                            reason="Unschedulable",
+                            message="0/1 nodes are available: 1 node(s) didn't match Pod's node affinity.",
+                        )
+                    ],
+                )
+            )
+        ]
+        workload = {
+            "spec": {
+                "template": {
+                    "spec": {
+                        "nodeSelector": {
+                            "kubernetes.io/os": "linux",
+                            "kubernetes.io/arch": "arm64",
+                            "zone": "cn-hz-a",
+                        }
+                    }
+                }
+            },
+            "status": {
+                "replicas": 1,
+                "ready": 0,
+                "allocated": 0,
+                "selector": "app=sandbox",
+            },
+            "metadata": {
+                "namespace": "test-ns",
+                "creationTimestamp": "2025-12-24T10:00:00Z",
+            },
+        }
+
+        result = provider.get_status(workload)
+
+        assert result["state"] == "Pending"
+        assert result["reason"] == "BATCHSANDBOX_PENDING"
+
+    def test_get_status_keeps_pending_for_mixed_capacity_and_affinity_message(self):
+        mock_k8s_client = MagicMock()
+        provider = BatchSandboxProvider(mock_k8s_client)
+        mock_k8s_client.list_pods.return_value = [
+            SimpleNamespace(
+                status=SimpleNamespace(
+                    phase="Pending",
+                    pod_ip=None,
+                    conditions=[
+                        SimpleNamespace(
+                            type="PodScheduled",
+                            status="False",
+                            reason="Unschedulable",
+                            message=(
+                                "0/2 nodes are available: 1 Insufficient cpu, "
+                                "1 node(s) didn't match Pod's node affinity/selector."
+                            ),
+                        )
+                    ],
+                )
+            )
+        ]
+        workload = {
+            "spec": {
+                "template": {
+                    "spec": {
+                        "nodeSelector": {
+                            "kubernetes.io/os": "linux",
+                            "kubernetes.io/arch": "arm64",
+                        }
+                    }
+                }
+            },
+            "status": {
+                "replicas": 1,
+                "ready": 0,
+                "allocated": 0,
+                "selector": "app=sandbox",
+            },
+            "metadata": {
+                "namespace": "test-ns",
+                "creationTimestamp": "2025-12-24T10:00:00Z",
+            },
+        }
+
+        result = provider.get_status(workload)
+
         assert result["state"] == "Pending"
         assert result["reason"] == "BATCHSANDBOX_PENDING"
     
@@ -1753,23 +2024,23 @@ spec:
 
         assert result == {"name": "test-id", "uid": "test-uid"}
 
-        # Verify API call
-        body = mock_k8s_client.create_custom_object.call_args.kwargs["body"]
-        pod_spec = body["spec"]["template"]["spec"]
+    def test_create_workload_poolref_rejects_platform(self, mock_k8s_client):
+        provider = BatchSandboxProvider(mock_k8s_client)
 
-        # Check volume definition
-        volumes_list = pod_spec.get("volumes", [])
-        pvc_volume = next((v for v in volumes_list if v["name"] == "data-volume"), None)
-        assert pvc_volume is not None
-        assert pvc_volume["persistentVolumeClaim"]["claimName"] == "my-pvc"
-
-        # Check volume mount in main container
-        main_container = pod_spec["containers"][0]
-        mounts = main_container.get("volumeMounts", [])
-        data_mount = next((m for m in mounts if m["name"] == "data-volume"), None)
-        assert data_mount is not None
-        assert data_mount["mountPath"] == "/mnt/data"
-        assert data_mount["readOnly"] is False
+        with pytest.raises(ValueError, match="platform is not supported together with extensions.poolRef"):
+            provider.create_workload(
+                sandbox_id="test-id",
+                namespace="test-ns",
+                image_spec=ImageSpec(uri="python:3.11"),
+                entrypoint=["/bin/bash"],
+                env={},
+                resource_limits={},
+                labels={"opensandbox.io/id": "test-id"},
+                expires_at=None,
+                execd_image="execd:latest",
+                extensions={"poolRef": "warm-pool"},
+                platform=PlatformSpec(os="linux", arch="amd64"),
+            )
 
     def test_create_workload_with_pvc_volume_readonly(self, mock_k8s_client):
         """

@@ -15,10 +15,11 @@
 import pytest
 from fastapi import HTTPException
 
-from opensandbox_server.api.schema import Host, OSSFS, PVC, Volume
+from opensandbox_server.api.schema import Host, OSSFS, PVC, Volume, PlatformSpec
 from opensandbox_server.services.constants import SandboxErrorCodes
 from opensandbox_server.services.validators import (
     ensure_metadata_labels,
+    ensure_platform_valid,
     ensure_timeout_within_limit,
     ensure_valid_host_path,
     ensure_valid_mount_path,
@@ -27,6 +28,21 @@ from opensandbox_server.services.validators import (
     ensure_valid_volume_name,
     ensure_volumes_valid,
 )
+
+
+def test_ensure_platform_valid_accepts_windows():
+    platform = PlatformSpec(os="windows", arch="amd64")
+    ensure_platform_valid(platform)
+    assert platform.os == "windows"
+    assert platform.arch == "amd64"
+
+
+def test_ensure_platform_valid_rejects_unsupported_os():
+    platform = PlatformSpec(os="darwin", arch="amd64")
+    with pytest.raises(HTTPException) as exc_info:
+        ensure_platform_valid(platform)
+    assert exc_info.value.status_code == 400
+    assert exc_info.value.detail["code"] == SandboxErrorCodes.INVALID_PARAMETER
 
 
 def test_ensure_metadata_labels_accepts_common_k8s_forms():

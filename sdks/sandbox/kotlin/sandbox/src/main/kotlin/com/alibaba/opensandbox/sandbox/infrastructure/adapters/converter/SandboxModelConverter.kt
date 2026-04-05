@@ -33,6 +33,7 @@ import com.alibaba.opensandbox.sandbox.domain.models.sandboxes.OSSFS
 import com.alibaba.opensandbox.sandbox.domain.models.sandboxes.PVC
 import com.alibaba.opensandbox.sandbox.domain.models.sandboxes.PagedSandboxInfos
 import com.alibaba.opensandbox.sandbox.domain.models.sandboxes.PaginationInfo
+import com.alibaba.opensandbox.sandbox.domain.models.sandboxes.PlatformSpec
 import com.alibaba.opensandbox.sandbox.domain.models.sandboxes.SandboxCreateResponse
 import com.alibaba.opensandbox.sandbox.domain.models.sandboxes.SandboxEndpoint
 import com.alibaba.opensandbox.sandbox.domain.models.sandboxes.SandboxImageAuth
@@ -52,6 +53,7 @@ import com.alibaba.opensandbox.sandbox.api.models.PaginationInfo as ApiPaginatio
 import com.alibaba.opensandbox.sandbox.api.models.Sandbox as ApiSandbox
 import com.alibaba.opensandbox.sandbox.api.models.SandboxStatus as ApiSandboxStatus
 import com.alibaba.opensandbox.sandbox.api.models.Volume as ApiVolume
+import com.alibaba.opensandbox.sandbox.api.models.PlatformSpec as ApiPlatformSpec
 import com.alibaba.opensandbox.sandbox.api.models.egress.NetworkPolicy as ApiEgressNetworkPolicy
 import com.alibaba.opensandbox.sandbox.api.models.egress.NetworkRule as ApiEgressNetworkRule
 import com.alibaba.opensandbox.sandbox.domain.models.sandboxes.SandboxStatus as DomainSandboxStatus
@@ -235,6 +237,7 @@ internal object SandboxModelConverter {
         metadata: Map<String, String>,
         timeout: Duration?,
         resource: Map<String, String>,
+        platform: PlatformSpec?,
         networkPolicy: NetworkPolicy?,
         extensions: Map<String, String>,
         volumes: List<Volume>?,
@@ -246,10 +249,26 @@ internal object SandboxModelConverter {
             env = env,
             metadata = metadata,
             resourceLimits = resource,
+            platform = platform?.toApiPlatformSpec(),
             networkPolicy = networkPolicy?.toApiNetworkPolicy(),
             extensions = extensions,
             volumes = volumes?.map { it.toApiVolume() },
         )
+    }
+
+    private fun PlatformSpec.toApiPlatformSpec(): ApiPlatformSpec {
+        return ApiPlatformSpec(
+            os = this.os,
+            arch = this.arch,
+        )
+    }
+
+    private fun ApiPlatformSpec.toDomainPlatformSpec(): PlatformSpec {
+        return PlatformSpec
+            .builder()
+            .os(this.os)
+            .arch(this.arch)
+            .build()
     }
 
     /**
@@ -262,6 +281,7 @@ internal object SandboxModelConverter {
             expiresAt = this.expiresAt,
             createdAt = this.createdAt,
             image = this.image.toImageSpec(),
+            platform = this.platform?.toDomainPlatformSpec(),
             status = this.status.toSandboxStatus(),
             metadata = metadata,
         )
@@ -312,6 +332,7 @@ internal object SandboxModelConverter {
     fun CreateSandboxResponse.toSandboxCreateResponse(): SandboxCreateResponse {
         return SandboxCreateResponse(
             id = this.id,
+            platform = this.platform?.toDomainPlatformSpec(),
         )
     }
 

@@ -20,7 +20,7 @@ from abc import ABC, abstractmethod
 from datetime import datetime
 from typing import Dict, List, Any, Optional
 
-from opensandbox_server.api.schema import Endpoint, ImageSpec, NetworkPolicy, Volume
+from opensandbox_server.api.schema import Endpoint, ImageSpec, NetworkPolicy, PlatformSpec, Volume
 from opensandbox_server.config import EGRESS_MODE_DNS
 
 
@@ -48,6 +48,7 @@ class WorkloadProvider(ABC):
         network_policy: Optional[NetworkPolicy] = None,
         egress_image: Optional[str] = None,
         volumes: Optional[List[Volume]] = None,
+        platform: Optional[PlatformSpec] = None,
         annotations: Optional[Dict[str, str]] = None,
         egress_auth_token: Optional[str] = None,
         egress_mode: str = EGRESS_MODE_DNS,
@@ -199,3 +200,100 @@ class WorkloadProvider(ABC):
         if sandbox_id.startswith("sandbox-"):
             return sandbox_id
         return f"sandbox-{sandbox_id}"
+
+    @staticmethod
+    def is_unschedulable_reason(reason: Optional[str]) -> bool:
+        if not isinstance(reason, str):
+            return False
+        normalized = reason.strip().lower()
+        return normalized in {"unschedulable", "failedscheduling"} or "unschedulable" in normalized
+
+    @staticmethod
+    def has_platform_constraints_in_pod_spec(pod_spec: Any) -> bool:
+        has_platform, _ = WorkloadProvider.analyze_platform_constraints_in_pod_spec(pod_spec)
+        return has_platform
+
+    @staticmethod
+    def analyze_platform_constraints_in_pod_spec(pod_spec: Any) -> tuple[bool, bool]:
+        """
+        Analyze pod scheduling constraints and return:
+        - has_platform_constraints: whether kubernetes.io/os|arch constraints exist
+        - has_non_platform_constraints: whether any other selector/affinity constraints exist
+        """
+        if not isinstance(pod_spec, dict):
+            return False, False
+        has_platform_constraints = False
+        has_non_platform_constraints = False
+
+        node_selector = pod_spec.get("nodeSelector", {})
+        if isinstance(node_selector, dict):
+            for key in node_selector.keys():
+                if key in ("kubernetes.io/os", "kubernetes.io/arch"):
+                    has_platform_constraints = True
+                else:
+                    has_non_platform_constraints = True
+
+        affinity = pod_spec.get("affinity", {})
+        if not isinstance(affinity, dict):
+            return has_platform_constraints, has_non_platform_constraints
+        node_affinity = affinity.get("nodeAffinity", {})
+        if not isinstance(node_affinity, dict):
+            return has_platform_constraints, has_non_platform_constraints
+        required = node_affinity.get("requiredDuringSchedulingIgnoredDuringExecution", {})
+        if not isinstance(required, dict):
+            return has_platform_constraints, has_non_platform_constraints
+        terms = required.get("nodeSelectorTerms", [])
+        if not isinstance(terms, list):
+            return has_platform_constraints, has_non_platform_constraints
+        for term in terms:
+            expressions = term.get("matchExpressions", []) if isinstance(term, dict) else []
+            if not isinstance(expressions, list):
+                continue
+            for expr in expressions:
+                key = expr.get("key") if isinstance(expr, dict) else None
+                if key in ("kubernetes.io/os", "kubernetes.io/arch"):
+                    has_platform_constraints = True
+                elif isinstance(key, str) and key:
+                    has_non_platform_constraints = True
+        return has_platform_constraints, has_non_platform_constraints
+
+    @staticmethod
+    def is_platform_unschedulable(
+        reason: Optional[str],
+        message: Optional[str],
+        workload_has_platform_constraints: bool,
+        workload_has_non_platform_constraints: bool = False,
+    ) -> bool:
+        if not workload_has_platform_constraints:
+            return False
+        if not WorkloadProvider.is_unschedulable_reason(reason):
+            return False
+        if not isinstance(message, str):
+            return False
+        normalized = message.lower()
+        transient_capacity_indicators = (
+            "insufficient cpu",
+            "insufficient memory",
+            "insufficient ephemeral-storage",
+            "too many pods",
+            "insufficient pods",
+            "preemption is not helpful",
+            "preemption: 0/",
+        )
+        if any(indicator in normalized for indicator in transient_capacity_indicators):
+            return False
+        if "kubernetes.io/os" in normalized or "kubernetes.io/arch" in normalized:
+            return True
+        # kube-scheduler often emits generic affinity/selector mismatch text
+        # without explicit label keys when nodeSelector/nodeAffinity is unsatisfied.
+        # Only treat this as platform-related when there are no non-platform
+        # selector/affinity keys that could have caused the mismatch.
+        if workload_has_non_platform_constraints:
+            return False
+        standard_patterns = (
+            "didn't match pod's node affinity",
+            "didn't match pod's node selector",
+            "did not match pod's node affinity",
+            "did not match pod's node selector",
+        )
+        return any(pattern in normalized for pattern in standard_patterns)

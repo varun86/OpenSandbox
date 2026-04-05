@@ -286,6 +286,12 @@ class K8sClient:
         )
         return resp.items
 
+    def read_node(self, name: str) -> Any:
+        """Read a node by name."""
+        if self._read_limiter:
+            self._read_limiter.acquire()
+        return self.get_core_v1_api().read_node(name)
+
     # ------------------------------------------------------------------
     # RuntimeClass operations
     # ------------------------------------------------------------------

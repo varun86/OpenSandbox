@@ -36,6 +36,7 @@ import type {
   Endpoint,
   NetworkPolicy,
   NetworkRule,
+  PlatformSpec,
   RenewSandboxExpirationResponse,
   SandboxId,
   SandboxInfo,
@@ -86,6 +87,10 @@ export interface SandboxCreateOptions {
    * Opaque extension parameters passed through to the server as-is.
    */
   extensions?: Record<string, string>;
+  /**
+   * Optional runtime platform constraint used for provisioning.
+   */
+  platform?: PlatformSpec;
 
   /**
    * Resource limits applied to the sandbox container.
@@ -285,6 +290,7 @@ export class Sandbox {
         : undefined,
       volumes: opts.volumes,
       extensions: opts.extensions ?? {},
+      platform: opts.platform,
     };
     if (timeoutSeconds !== null) {
       req.timeout = timeoutSeconds;

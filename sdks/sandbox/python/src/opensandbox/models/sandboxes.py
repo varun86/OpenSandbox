@@ -94,6 +94,17 @@ class SandboxImageSpec(BaseModel):
         return v
 
 
+class PlatformSpec(BaseModel):
+    """Runtime platform constraint for sandbox provisioning."""
+
+    os: Literal["linux"] = Field(
+        description="Target operating system for sandbox provisioning."
+    )
+    arch: Literal["amd64", "arm64"] = Field(
+        description="Target CPU architecture for sandbox provisioning."
+    )
+
+
 class NetworkRule(BaseModel):
     """
     Egress rule for matching network targets.
@@ -344,6 +355,9 @@ class SandboxInfo(BaseModel):
     image: SandboxImageSpec | None = Field(
         default=None, description="Image specification used to create sandbox"
     )
+    platform: PlatformSpec | None = Field(
+        default=None, description="Effective platform used for sandbox provisioning."
+    )
     metadata: dict[str, str] | None = Field(default=None, description="Custom metadata")
 
     model_config = ConfigDict(populate_by_name=True)
@@ -355,6 +369,9 @@ class SandboxCreateResponse(BaseModel):
     """
 
     id: str = Field(description="Unique identifier of the newly created sandbox")
+    platform: PlatformSpec | None = Field(
+        default=None, description="Effective platform used for sandbox provisioning."
+    )
 
 
 class SandboxRenewResponse(BaseModel):

@@ -1,39 +1,39 @@
-openapi: 3.1.0
+const OPENAPI_SPEC_YAML = `openapi: 3.1.0
 info:
   title: OpenSandbox Lifecycle API
   version: 0.1.0
   description: |
     The Sandbox Lifecycle API coordinates how untrusted workloads are created,
     executed, paused, resumed, and finally disposed. This specification focuses on
-    the primary lifecycle flows for the `sandbox` domain concept. Sandboxes are
+    the primary lifecycle flows for the \`sandbox\` domain concept. Sandboxes are
     provisioned directly from container images without requiring pre-created templates.
 
     ## Sandbox Lifecycle
 
     A sandbox follows this lifecycle:
 
-    1. **Creation** → Sandbox enters `Pending` state (auto-starts)
-    2. **Execution** → Transitions to `Running` state
-    3. **Pause** (optional) → `Pausing` → `Paused` (asynchronous process)
-    4. **Resume** (optional) → Returns to `Running` from `Paused`
-    5. **Termination** → `Stopping` → `Terminated` (can be triggered by kill action, TTL expiry, or error)
-    6. **Error** → Any state can transition to `Failed` on critical errors
+    1. **Creation** → Sandbox enters \`Pending\` state (auto-starts)
+    2. **Execution** → Transitions to \`Running\` state
+    3. **Pause** (optional) → \`Pausing\` → \`Paused\` (asynchronous process)
+    4. **Resume** (optional) → Returns to \`Running\` from \`Paused\`
+    5. **Termination** → \`Stopping\` → \`Terminated\` (can be triggered by kill action, TTL expiry, or error)
+    6. **Error** → Any state can transition to \`Failed\` on critical errors
 
-    The `status` field provides fine-grained details through `state`, `reason`, and `message`.
+    The \`status\` field provides fine-grained details through \`state\`, \`reason\`, and \`message\`.
 
     ## Authentication
 
     API Key authentication is required for all operations:
 
     1. **HTTP Header**
-       ```
+       \`\`\`
        OPEN-SANDBOX-API-KEY: your-api-key
-       ```
+       \`\`\`
 
     2. **Environment Variable** (for SDK clients)
-       ```
+       \`\`\`
        OPEN_SANDBOX_API_KEY=your-api-key
-       ```
+       \`\`\`
 
        SDK clients will automatically pick up this environment variable.
 servers:
@@ -51,13 +51,13 @@ paths:
       summary: List sandboxes
       description: |
         List all sandboxes with optional filtering and pagination using query parameters.
-        All filter conditions use AND logic. Multiple `state` parameters use OR logic within states.
+        All filter conditions use AND logic. Multiple \`state\` parameters use OR logic within states.
       parameters:
         - name: state
           in: query
           description: |
             Filter by lifecycle state. Pass multiple times for OR logic.
-            Example: `?state=Running&state=Paused`
+            Example: \`?state=Running&state=Paused\`
           schema:
             type: array
             items:
@@ -68,7 +68,7 @@ paths:
           in: query
           description: |
             Arbitrary metadata key-value pairs for filtering，keys and values must be url encoded
-            Example: To filter by `project=Apollo` and `note=Demo Test`: `?metadata=project%3DApollo%26note%3DDemo%252520Test`
+            Example: To filter by \`project=Apollo\` and \`note=Demo Test\`: \`?metadata=project%3DApollo%26note%3DDemo%252520Test\`
           schema:
             type: string
           style: form
@@ -113,7 +113,7 @@ paths:
         ## Authentication
 
         API Key authentication is required via:
-        - `OPEN-SANDBOX-API-KEY: <api-key>` header
+        - \`OPEN-SANDBOX-API-KEY: <api-key>\` header
       requestBody:
         required: true
         content:
@@ -169,16 +169,16 @@ paths:
             Sandbox created and accepted for provisioning.
 
             The returned sandbox includes:
-            - `id`: Unique sandbox identifier
-            - `status.state: "Pending"` (auto-starting provisioning)
-            - `status.reason` and `status.message` indicating initialization stage
-            - `metadata`, `expiresAt`, `createdAt`: Core sandbox information
+            - \`id\`: Unique sandbox identifier
+            - \`status.state: "Pending"\` (auto-starting provisioning)
+            - \`status.reason\` and \`status.message\` indicating initialization stage
+            - \`metadata\`, \`expiresAt\`, \`createdAt\`: Core sandbox information
 
-            Note: `image` and `updatedAt` are not included in the create response.
+            Note: \`image\` and \`updatedAt\` are not included in the create response.
             Use GET /sandboxes/{sandboxId} to retrieve the complete sandbox information including image spec.
 
             To track provisioning progress, poll GET /sandboxes/{sandboxId}.
-            The sandbox will automatically transition to `Running` state once provisioning completes.
+            The sandbox will automatically transition to \`Running\` state once provisioning completes.
           content:
             application/json:
               schema:
@@ -204,9 +204,9 @@ paths:
       summary: Fetch a sandbox by id
       description: |
         Returns the complete sandbox information including:
-        - `id`, `status`, `metadata`, `expiresAt`, `createdAt`: Core information
-        - `image`: Container image specification (not included in create response)
-        - `entrypoint`: Entry process specification
+        - \`id\`, \`status\`, \`metadata\`, \`expiresAt\`, \`createdAt\`: Core information
+        - \`image\`: Container image specification (not included in create response)
+        - \`entrypoint\`: Entry process specification
 
         This is the complete representation of the sandbox resource.
       responses:
@@ -537,9 +537,7 @@ components:
 
         platform:
           $ref: '#/components/schemas/PlatformSpec'
-          description: |
-            Platform constraint echoed from request or workload template.
-            Null when no scheduling constraint is provided.
+          description: Effective platform used for sandbox provisioning.
 
         expiresAt:
           type: string
@@ -579,9 +577,7 @@ components:
 
         platform:
           $ref: '#/components/schemas/PlatformSpec'
-          description: |
-            Platform constraint echoed from request or workload template.
-            Null when no scheduling constraint is provided.
+          description: Effective platform used for sandbox provisioning.
 
         status:
           $ref: '#/components/schemas/SandboxStatus'
@@ -704,7 +700,7 @@ components:
       description: |
         Runtime platform constraint used for scheduling/provisioning.
 
-        This field is independent from `image` and expresses the expected target
+        This field is independent from \`image\` and expresses the expected target
         OS and CPU architecture for sandbox execution.
 
         Behavioral notes:
@@ -714,13 +710,11 @@ components:
       properties:
         os:
           type: string
-          enum: [linux, windows]
-          description: Target operating system (for example `linux` or `windows`).
+          description: Target operating system (for example \`linux\`).
           example: linux
         arch:
           type: string
-          enum: [amd64, arm64]
-          description: Target CPU architecture (for example `amd64` or `arm64`).
+          description: Target CPU architecture (for example \`amd64\` or \`arm64\`).
           example: arm64
       additionalProperties: false
     CreateSandboxRequest:
@@ -729,7 +723,7 @@ components:
       description: |
         Request to create a new sandbox from a container image.
 
-        **Note**: API Key authentication is required via the `OPEN-SANDBOX-API-KEY` header.
+        **Note**: API Key authentication is required via the \`OPEN-SANDBOX-API-KEY\` header.
       properties:
         image:
           $ref: '#/components/schemas/ImageSpec'
@@ -742,7 +736,6 @@ components:
 
             If omitted, runtime default behavior applies. If specified, the runtime
             must satisfy this constraint or fail explicitly.
-            This field is only meaningful when scheduling constraints are set.
 
         timeout:
           oneOf:
@@ -751,7 +744,7 @@ components:
             - type: 'null'
           description: |
             Sandbox timeout in seconds. The sandbox will automatically terminate after this duration.
-            The maximum is controlled by the server configuration (`server.max_sandbox_timeout_seconds`).
+            The maximum is controlled by the server configuration (\`server.max_sandbox_timeout_seconds\`).
             Omit this field or set it to null to disable automatic expiration and require explicit cleanup.
             Note: manual cleanup support is runtime-dependent; Kubernetes providers may reject
             omitted or null timeout when the underlying workload provider does not support non-expiring sandboxes.
@@ -811,7 +804,7 @@ components:
           $ref: '#/components/schemas/NetworkPolicy'
           description: |
             Optional outbound network policy for the sandbox.
-            Shape matches the sidecar `/policy` endpoint. If omitted or empty,
+            Shape matches the sidecar \`/policy\` endpoint. If omitted or empty,
             the sidecar starts in allow-all mode until updated.
 
         volumes:
@@ -833,19 +826,19 @@ components:
             **Note**: This field is reserved for internal features, experimental flags, or temporary behaviors. Standard parameters should be proposed as core API fields.
 
             **Best Practices**:
-            - **Namespacing**: Use prefixed keys (e.g., `storage.id`) to prevent collisions.
+            - **Namespacing**: Use prefixed keys (e.g., \`storage.id\`) to prevent collisions.
             - **Pass-through**: SDKs and middleware must treat this object as opaque and pass it through transparently.
 
             **Well-known keys**:
-            - `access.renew.extend.seconds` (optional): Decimal integer string from **300** to **86400** (5 minutes to 24 hours inclusive). Opts the sandbox into OSEP-0009 renew-on-access and sets per-renewal extension seconds. Omit to disable. Invalid values are rejected at creation with HTTP 400 (validated on the lifecycle create endpoint via `validate_extensions` in server `src/extensions/validation.py`).
+            - \`access.renew.extend.seconds\` (optional): Decimal integer string from **300** to **86400** (5 minutes to 24 hours inclusive). Opts the sandbox into OSEP-0009 renew-on-access and sets per-renewal extension seconds. Omit to disable. Invalid values are rejected at creation with HTTP 400 (validated on the lifecycle create endpoint via \`validate_extensions\` in server \`src/extensions/validation.py\`).
     ResourceLimits:
       type: object
       description: |
         Runtime resource constraints as key-value pairs. Similar to Kubernetes resource specifications,
         allows flexible definition of resource limits. Common resource types include:
-        - `cpu`: CPU allocation in millicores (e.g., "250m" for 0.25 CPU cores)
-        - `memory`: Memory allocation in bytes or human-readable format (e.g., "512Mi", "1Gi")
-        - `gpu`: Number of GPU devices (e.g., "1")
+        - \`cpu\`: CPU allocation in millicores (e.g., "250m" for 0.25 CPU cores)
+        - \`memory\`: Memory allocation in bytes or human-readable format (e.g., "512Mi", "1Gi")
+        - \`gpu\`: Number of GPU devices (e.g., "1")
 
         New resource types can be added without API changes.
       additionalProperties:
@@ -920,8 +913,8 @@ components:
     NetworkPolicy:
       type: object
       description: |
-        Egress network policy matching the sidecar `/policy` request body.
-        If `defaultAction` is omitted, the sidecar defaults to "deny"; passing an empty
+        Egress network policy matching the sidecar \`/policy\` request body.
+        If \`defaultAction\` is omitted, the sidecar defaults to "deny"; passing an empty
         object or null results in allow-all behavior at startup.
       properties:
         defaultAction:
@@ -987,7 +980,7 @@ components:
           type: string
           description: |
             Optional subdirectory under the backend path to mount.
-            For `ossfs` backend, this field is used as the bucket prefix.
+            For \`ossfs\` backend, this field is used as the bucket prefix.
             Must be a relative path without '..' components.
       additionalProperties: false
 
@@ -1016,7 +1009,7 @@ components:
         for referencing a pre-existing, platform-managed named volume.
 
         - Kubernetes: maps to a PersistentVolumeClaim in the same namespace.
-        - Docker: maps to a Docker named volume (created via `docker volume create`).
+        - Docker: maps to a Docker named volume (created via \`docker volume create\`).
 
         The volume must already exist on the target platform before sandbox
         creation.
@@ -1037,9 +1030,9 @@ components:
       description: |
         Alibaba Cloud OSS mount backend via ossfs.
 
-        The runtime mounts a host-side OSS path under `storage.ossfs_mount_root`
+        The runtime mounts a host-side OSS path under \`storage.ossfs_mount_root\`
         and bind-mounts the resolved path into the sandbox container.
-        Prefix selection is expressed via `Volume.subPath`.
+        Prefix selection is expressed via \`Volume.subPath\`.
         In Docker runtime, OSSFS backend requires OpenSandbox Server to run on a Linux host with FUSE support.
       required: [bucket, endpoint, accessKeyId, accessKeySecret]
       properties:
@@ -1050,7 +1043,7 @@ components:
           maxLength: 63
         endpoint:
           type: string
-          description: OSS endpoint (e.g., `oss-cn-hangzhou.aliyuncs.com`).
+          description: OSS endpoint (e.g., \`oss-cn-hangzhou.aliyuncs.com\`).
           minLength: 1
         version:
           type: string
@@ -1061,10 +1054,10 @@ components:
           type: array
           description: |
             Additional ossfs mount options.
-            Runtime encodes options by `version`:
-            - `1.0`: mounts with `ossfs ... -o <option>`
-            - `2.0`: mounts with `ossfs2 mount ... -c <config-file>` and encodes options as `--<option>` lines in the config file
-            Option values must be provided as raw payloads without leading `-`.
+            Runtime encodes options by \`version\`:
+            - \`1.0\`: mounts with \`ossfs ... -o <option>\`
+            - \`2.0\`: mounts with \`ossfs2 mount ... -c <config-file>\` and encodes options as \`--<option>\` lines in the config file
+            Option values must be provided as raw payloads without leading \`-\`.
           items:
             type: string
         accessKeyId:
@@ -1076,3 +1069,4 @@ components:
           description: OSS access key secret for inline credentials mode.
           minLength: 1
       additionalProperties: false
+`;
