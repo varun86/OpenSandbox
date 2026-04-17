@@ -342,6 +342,17 @@ class KubernetesSandboxService(K8sDiagnosticsMixin, SandboxService, ExtensionSer
                         "The PVC must be pre-created or RBAC must be updated.",
                         claim_name,
                     )
+                elif e.status in (400, 422):
+                    # Invalid PVC spec from user-provided hints
+                    # (e.g. accessModes, storage). These are client errors,
+                    # not retryable server faults.
+                    raise HTTPException(
+                        status_code=status.HTTP_400_BAD_REQUEST,
+                        detail={
+                            "code": SandboxErrorCodes.INVALID_PARAMETER,
+                            "message": f"Invalid PVC spec for '{claim_name}': {e.reason}",
+                        },
+                    ) from e
                 else:
                     logger.error("Failed to create PVC '%s': %s", claim_name, e)
                     raise HTTPException(
