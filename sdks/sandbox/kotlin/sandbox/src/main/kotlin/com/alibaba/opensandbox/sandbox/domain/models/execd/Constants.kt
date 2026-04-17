@@ -18,3 +18,4 @@ package com.alibaba.opensandbox.sandbox.domain.models.execd
 
 const val DEFAULT_EXECD_PORT = 44772
 const val DEFAULT_EGRESS_PORT = 18080
+const val EXECD_ACCESS_TOKEN_HEADER = "X-EXECD-ACCESS-TOKEN"
