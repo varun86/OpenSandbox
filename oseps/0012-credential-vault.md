@@ -655,6 +655,7 @@ Limitations:
 - Short term: credential-enabled startup must fail closed unless IPv6 HTTP(S) egress is disabled or covered by equivalent transparent redirect. Long term: IPv6 support should use ip6tables or nftables redirect with the same tests as IPv4.
 - Credential-enabled startup must reject upstream TLS-insecure mode such as `OPENSANDBOX_EGRESS_MITMPROXY_SSL_INSECURE=true`.
 - Credential-enabled startup must fail closed if mitmproxy, `iptables` redirect, CA bootstrap, credential addon loading, or egress API authentication cannot be configured.
+- Credential-enabled runtimes must gate the application process until the egress sidecar is actually ready. Readiness alone is not sufficient if sandbox code can start before redirect rules, mitmproxy, CA bootstrap, and credential addon loading are complete.
 - MITM addon trust boundary: current egress mitm addons are configured by the operator/platform through egress sidecar configuration, not by sandbox users. This is not a credential leak by itself because operator-configured addons are part of the platform trust boundary. Credential-enabled sandboxes must preserve this boundary by rejecting any future sandbox-supplied addon mechanism and by ensuring addon script paths do not come from app-container-writable locations. Operator-configured trusted addons may be loaded and must follow the same credential redaction and audit rules.
 
 ### Policy and Egress Integration
@@ -740,6 +741,7 @@ All diagnostics APIs that surface runtime logs must preserve redaction behavior.
 - Keep the existing system addon behavior for streaming.
 - Reject sandbox-supplied mitm addon loading for credential-enabled sandboxes. Operator-configured trusted addons may run as part of the platform trust boundary.
 - Fail readiness/startup when transparent redirect, credential addon loading, CA bootstrap, upstream TLS verification, IPv6 coverage/disablement, or egress API auth is unavailable for a credential-enabled sandbox.
+- Expose a readiness signal that means redirect rules, mitmproxy, credential addon loading, CA material, upstream TLS verification, IPv6 handling, and egress API auth are all ready before application startup is released.
 
 #### Kubernetes
 
@@ -751,6 +753,7 @@ All diagnostics APIs that surface runtime logs must preserve redaction behavior.
 - Ensure Credential Proxy has no broad Kubernetes API permissions by default.
 - Ensure the mitmproxy CA is trusted by the sandbox application container when HTTPS interception is enabled.
 - Ensure generated egress API auth material is available only to the control plane and egress sidecar, not the application container.
+- Add an init/startup gate so application containers do not run user code until the egress sidecar readiness signal is ready for credential-enabled sandboxes.
 
 #### Docker
 
@@ -758,6 +761,7 @@ All diagnostics APIs that surface runtime logs must preserve redaction behavior.
 - Ensure the mitmproxy CA is trusted by the sandbox application container when HTTPS interception is enabled.
 - Clean up sidecar and sandbox-scoped credential material when the sandbox is deleted.
 - Ensure generated egress API auth material is not exposed to the application container.
+- Start or release the sandbox application container only after the egress sidecar readiness signal is ready for credential-enabled sandboxes.
 
 #### SDKs and CLI
 
@@ -795,6 +799,7 @@ All diagnostics APIs that surface runtime logs must preserve redaction behavior.
 - Kubernetes runtime rejects requests that try to reference arbitrary pre-existing Kubernetes Secret names as credential sources.
 - Credential Proxy denies non-matching hosts, paths, and methods.
 - Credential-enabled sandbox creation/readiness fails when transparent redirect, mitm readiness, CA bootstrap, credential addon loading, or egress API auth cannot be configured.
+- Credential-enabled sandbox code cannot run before the egress sidecar readiness signal is ready.
 - Credential-enabled sandbox creation rejects a binding that targets a non-configured port, and accepts the same port only after the operator configures transparent MITM interception for that port.
 - Credential-enabled sidecars require egress API auth even when credentials are the only reason the egress sidecar starts.
 - Sandbox-supplied mitm addons are not loaded for credential-enabled sandboxes; operator-configured trusted addons may run.
