@@ -90,6 +90,18 @@ class TestEgressSidecarViaApply:
         assert env_by_name[EGRESS_MODE_ENV] == EGRESS_MODE_DNS
         assert OPENSANDBOX_EGRESS_MITMPROXY_TRANSPARENT not in env_by_name
 
+    def test_always_mounts_runtime_volume(self):
+        container = _egress_container(
+            "opensandbox/egress:v1.1.0",
+            NetworkPolicy(default_action="deny", egress=[]),
+        )
+        assert container["volumeMounts"] == [
+            {
+                "name": OPENSANDBOX_RUNTIME_VOLUME_NAME,
+                "mountPath": OPENSANDBOX_RUNTIME_MOUNT_PATH,
+            }
+        ]
+
     def test_contains_transparent_mitm_env_when_credential_proxy_enabled(self):
         egress_image = "opensandbox/egress:v1.1.0"
         network_policy = NetworkPolicy(

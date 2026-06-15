@@ -112,13 +112,12 @@ def apply_egress_to_spec(
             "failureThreshold": 30,
         },
     }
-    if credential_proxy_enabled:
-        sidecar["volumeMounts"] = [
-            {
-                "name": OPENSANDBOX_RUNTIME_VOLUME_NAME,
-                "mountPath": OPENSANDBOX_RUNTIME_MOUNT_PATH,
-            }
-        ]
+    sidecar["volumeMounts"] = [
+        {
+            "name": OPENSANDBOX_RUNTIME_VOLUME_NAME,
+            "mountPath": OPENSANDBOX_RUNTIME_MOUNT_PATH,
+        }
+    ]
     if egress_auth_token:
         sidecar["readinessProbe"]["httpGet"]["httpHeaders"] = [
             {"name": OPEN_SANDBOX_EGRESS_AUTH_HEADER, "value": egress_auth_token}
